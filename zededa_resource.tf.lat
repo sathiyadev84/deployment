@@ -1,0 +1,96 @@
+data "zedcloud_edgenode" "edge_node" {
+    name     = var.edge_node
+    model_id = "f12ec705-1f85-4581-93a9-b0e3b6798b94"
+    title    = var.edge_node
+}
+
+data "zedcloud_project" "project_name" {
+    name = var.project_name
+    type = "TAG_TYPE_PROJECT"
+    title = var.project_name
+}
+
+data "zedcloud_application" "rancher_edge_app" {
+    name  = var.rancher_edge_app
+    title = var.rancher_edge_app
+}
+
+resource "zedcloud_network_instance" "app_switch_inf" {
+    name      = "inf-eth0-${var.edge_node}"
+    title     = "inf-eth0-${var.edge_node}"
+    kind      = "NETWORK_INSTANCE_KIND_SWITCH"
+    type      = "NETWORK_INSTANCE_DHCP_TYPE_UNSPECIFIED"
+    port      = "eth0"
+    device_id = data.zedcloud_edgenode.edge_node.id
+}
+
+resource "zedcloud_application_instance" "k3s_runtime_gpu" {
+    name            = "k3s_runtime_gpu"
+    activate        = true
+    app_id          = data.zedcloud_application.rancher_edge_app.id
+    project_id      = data.zedcloud_project.project_name.id
+    device_id       = data.zedcloud_edgenode.edge_node.id
+    app_type        = "APP_TYPE_VM"
+    title           = "k3s_runtime_gpu"
+    description     = "k3s_runtime_gpu"
+    depends_on      = [rancher2_cluster.cluster_create, zedcloud_network_instance.app_switch_inf]
+    interfaces {
+        intfname    = "eth0"
+        netinstname = zedcloud_network_instance.app_switch_inf.name
+        privateip   = false
+    }
+    interfaces {
+        intfname    =  "GPU"
+        directattach = true
+        netinstname = ""
+        privateip = false
+        io {
+            name = "GPU"
+            type = "IO_TYPE_OTHER"
+        }
+    }
+    drives {
+      imagename = "k3s_gpu_runtime_v2"
+      drvtype   = "HDD"
+      maxsize   = "104857600"
+      preserve  = false
+      target    = "Disk"
+      readonly  = false
+    }
+    custom_config {
+      name            = "custom_config"
+      add             = true
+      override        = false
+      field_delimiter = "###"
+      template        = "I2Nsb3VkLWNvbmZpZwpydW5jbWQ6CiAtIGhvc3RuYW1lY3RsIHNldC1ob3N0bmFtZSAkenJpLnN5c3RlbS5lZGdlLWluc3RhbmNlLm5hbWUKIC0gYXB0IHVwZGF0ZSAteQogLSBhcHQtZ2V0IGluc3RhbGwgY29udGFpbmVyZCAteQogLSBzeXN0ZW1jdGwgZW5hYmxlIGNvbnRhaW5lcmQKIC0gYXB0IHVwZGF0ZSAteQogLSBjZCAvaG9tZS9wb2N1c2VyCiAtIGN1cmwgLXNmTCBodHRwczovL2dldC5rM3MuaW8gfCBJTlNUQUxMX0szU19WRVJTSU9OPSMjI0szU19WRVJTSU9OIyMjIElOU1RBTExfSzNTX0VYRUM9IyMjSU5TVEFMTF9LM1NfRVhFQyMjIyBLM1NfVE9LRU49IyMjSzNTX0NMVVNURVJfVE9LRU4jIyMgIEszU19VUkw9IyMjSzNTX1NFUlZFUl9VUkxfUE9SVCMjIyBzaCAtCiAtIHNsZWVwIDMwCiAtIGJhc2ggaW5zdGFsbC16ZWRlZGEtbnZpZGlhLXN0YWNrX3YzLnNoCiAtIHNsZWVwIDMwCiAtIHN1ZG8gcHl0aG9uMyBhdHRhY2hfY2x1c3Rlci5weSAjIyNSQU5DSEVSX1lBTUxfVVJMIyMjCmZpbmFsX21lc3NhZ2U6ICJrM3MgIyMjUk9MRSMjIyBoYXMgYmVlbiBzZXR1cCwgYWZ0ZXIgJFVQVElNRSBzZWNvbmRzIg=="
+        variable_groups {
+            name     = "k3s Cluster Parameters"
+            required = true
+            variables {
+            name     = "K3S_CLUSTER_TOKEN"
+            label    = "K3S_CLUSTER_TOKEN"
+            required = "true"
+            default  = "\"\""
+            format   = "VARIABLE_FORMAT_TEXT"
+            encode   = "FILE_ENCODING_UNSPECIFIED"
+          }
+          variables {
+            name = "K3S_VERSION"
+            label = "K3S_VERSION"
+            required = true
+            format = "VARIABLE_FORMAT_TEXT"
+            encode = "FILE_ENCODING_UNSPECIFIED"
+            value = "v1.31.2+k3s1"
+            default = "v1.31.2+k3s1"
+          }
+          variables {
+            name = "RANCHER_YAML_URL"
+            label = "RANCHER_YAML_URL"
+            required = true
+            value = rancher2_cluster.cluster_create.cluster_registration_token[0].manifest_url
+            format = "VARIABLE_FORMAT_TEXT"
+            encode = "FILE_ENCODING_UNSPECIFIED"
+          }
+       }
+    }
+}
